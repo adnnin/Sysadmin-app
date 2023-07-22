@@ -1,0 +1,232 @@
+unit Unit1;
+
+interface
+
+uses
+  Winapi.Windows, ActiveX, inifiles, ComObj, Registry, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs,ShellAPI, System.Win.ScktComp, Vcl.StdCtrls,
+  Vcl.ComCtrls, Vcl.ExtCtrls;
+
+type
+  TClientHost = class(TForm)
+    ClientSocket1: TClientSocket;
+    Button1: TButton;
+    Memo1: TMemo;
+    RichEdit1: TRichEdit;
+    TrayIcon1: TTrayIcon;
+    procedure FormCreate(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+    procedure ClientSocket1Read(Sender: TObject; Socket: TCustomWinSocket);
+    procedure TrayIcon1DblClick(Sender: TObject);
+  private
+    procedure TryConnection(IP, Port: string);
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  ClientHost: TClientHost;
+  IniFile: TiniFile;
+
+implementation
+{$R *.dfm}
+
+//procedure hello;
+//Begin
+//  Showmessage ('hello world');
+//End;
+
+procedure TClientHost.Button1Click(Sender: TObject);
+var ip,port:string;
+Ini : Tinifile;
+begin
+
+//ip:='192.168.100.107';
+//port:='65530';
+Ini := TIniFile.Create(ExtractFilePath(Application.ExeName)+'SetIP.ini');
+//создали файл в директории программы
+  Ini:=TiniFile.Create(extractfilepath(paramstr(0))+'SetIP.ini');
+
+  ip:= Ini.Readstring('Address', 'ip', ip);
+  port:= Ini.ReadString('Port', 'port', port);
+
+
+TryConnection(ip,port);
+  //TryConnection('192.168.100.107', '65530');
+
+end;
+
+
+
+procedure TClientHost.TryConnection(IP, Port : string);
+begin
+   try
+    ClientSocket1.Port:=Port.ToInteger;
+    ClientSocket1.Address:= IP;
+    ClientSocket1.Open
+  except
+    ShowMessage('Я не смог подключится к папе...')
+  end;
+
+end;
+
+procedure TClientHost.ClientSocket1Read(Sender: TObject;
+  Socket: TCustomWinSocket);
+   const
+      WbemUser            ='';
+      WbemPassword        ='';
+      WbemComputer        ='localhost';
+      wbemFlagForwardOnly = $00000020;
+      var
+      FSWbemLocator : OLEVariant;
+      FWMIService   : OLEVariant;
+      FWbemObjectSet: OLEVariant;
+      FWbemObject   : OLEVariant;
+      oEnum         : IEnumvariant;
+      iValue        : LongWord;
+      ArchCPU, TypeCPU:string;
+var
+  Command : string;
+  R: TRegistry;
+  RegPath: string;
+begin
+  memo1.Lines.Add('-----------');
+
+  Command := Socket.ReceiveText;
+
+  memo1.Lines.Add('Мне прислали команду ' + Command);
+
+  if Command = '[Выключить_ПК]' then
+  Begin
+    memo1.Lines.Add('Я принял её! ' + Command);
+
+    memo1.Lines.Add('Начинаю Выключение ПК!');
+
+    ShellExecute(handle, nil, 'cmd.exe', PCHar('cmd /c shutdown /s'),nil, SW_HIDE);
+  End;
+
+  if Command = '[Перезагрузить_ПК]' then
+  Begin
+    memo1.Lines.Add('Я принял её! ' + Command);
+
+    memo1.Lines.Add('Начинаю перезагрузку ПК!');
+
+    ShellExecute(handle, nil, 'cmd.exe', PCHar('cmd /c shutdown /r'),nil, SW_HIDE);
+  End;
+
+
+  if Command = '[Получить_ттх_пк]' then
+
+  begin
+    memo1.Lines.Add('Я принял её! ' + Command);
+
+    memo1.Lines.Add('Сохраняю инфу о ПК');
+
+    var strm := TStringList.Create;
+
+    var Put := ExtractFileDir(ParamStr(0))+'\sysInfo.txt';
+
+    strm.SaveToFile(Put); //создаю файл быстрым костылем))
+
+    ShellExecute(handle, nil, 'cmd.exe', PCHar('cmd /c chcp 1251 && systeminfo > C:\Users\bazyl\Sysinfo.txt'),nil, SW_HIDE);
+
+      begin;
+      FSWbemLocator := CreateOleObject('WbemScripting.SWbemLocator');
+      FWMIService   := FSWbemLocator.ConnectServer(WbemComputer, 'root\CIMV2', WbemUser, WbemPassword);
+      FWbemObjectSet:= FWMIService.ExecQuery('SELECT * FROM Win32_Processor','WQL',wbemFlagForwardOnly);
+      oEnum         := IUnknown(FWbemObjectSet._NewEnum) as IEnumVariant;
+      while oEnum.Next(1, FWbemObject, iValue) = 0 do
+      begin
+      case FWbemObject.Architecture of
+      0 :ArchCPU :='x86';
+      9: ArchCPU :='x64';
+      end;
+
+      case FWbemObject.ProcessorType of
+      1: TypeCPU :='Другое';
+      2: TypeCPU :='Неизвестный';
+      3: TypeCPU :='Центральный процессор';
+      4: TypeCPU :='Математический процессор';
+      5: TypeCPU :='DSP процессор';
+      6: TypeCPU :='Видеопроцессор';
+      end;
+      Memo1.Clear;
+
+
+      strm.Add(Format('Имя:                          %s',[String(FWbemObject.Name)]));
+      strm.Add(Format('Архитектура:                  %s',[ArchCPU]));
+      strm.Add(Format('Производитель:                %s',[String(FWbemObject.Manufacturer)]));
+      strm.Add(Format('Описание:                     %s',[String(FWbemObject.Caption)]));
+      strm.Add(Format('Тип:                           %s',[TypeCPU]));
+      strm.Add(Format('Тип сокета:                   %s',[String(FWbemObject.SocketDesignation)]));
+      strm.Add(Format('Число ядер:                   %d',[Integer(FWbemObject.NumberOfCores)]));
+      strm.Add(Format('Число используемых ядер:          %d',[Integer(FWbemObject.NumberOfEnabledCore)]));
+      strm.Add(Format('Число логических процессоров:     %d',[Integer(FWbemObject.NumberOfLogicalProcessors)]));
+      strm.Add(Format('Статус:                           %s',[String(FWbemObject.Status)]));
+      end;
+      end;
+
+
+
+
+    memo1.Lines.Add('Читае инфу из файла');
+
+    var Strm2 := TStringList.Create();
+
+    try
+      Strm2.LoadFromFile('C:\Users\bazyl\test2.txt');
+
+    except
+      memo1.Lines.Add('Файл не прочитан...');
+
+      exit;
+    end;
+
+    var FullTTX : string;
+   FullTTX := strm2.Text + #13#13 + 'Инфа по процу: ' + Strm.Text;
+
+   memo1.Lines.Add('Файл прочитался, его текст: '  + FullTTX);
+
+
+    //сча тут действия можно поо ней, например дадим ответ что мы пизданули его
+
+    Socket.SendText(FullTTX);
+
+    memo1.Lines.Add('Папе ответил!');
+
+  end
+  else
+  begin
+    Socket.SendText('ERROR! Команда ' + Command + ' не дошла...');
+    memo1.Lines.Add('ERROR! Команда ' + Command + ' не дошла...');
+  end;
+
+  memo1.Lines.Add('-----------');
+
+end;
+
+procedure TClientHost.TrayIcon1DblClick(Sender: TObject);
+begin
+     TrayIcon1.Visible := False;
+  Show();
+  WindowState := wsNormal;
+  Application.BringToFront();
+end;
+
+procedure TClientHost.FormCreate(Sender: TObject);
+var ip,port :string;
+
+begin
+
+  Memo1.Font.Charset:=OEM_CHARSET;   //кодировка для memo
+
+   TrayIcon1.Visible := True;
+  Application.ShowMainForm:=False;
+  ShowWindow(Handle, SW_HIDE);
+
+
+end;
+
+
+end.
